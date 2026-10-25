@@ -1,0 +1,63 @@
+pipeline {
+    agent {
+        node {
+            label 'prod'
+        }
+    }
+    tools {
+        maven 'mymaven'
+    }
+
+    stages {
+        stage('Code') {
+            steps {
+                git "https://github.com/pavanreddy215/DockerWeb-project.git"
+            }
+        }
+        stage('CQA') {
+            steps {
+                withSonarQubeEnv('MySonar') {
+                      sh "mvn clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:5.5.0.6356:sonar -Dsonar.projectKey=MyProject"
+                 }
+            }
+        }
+        stage('BUILD') {
+            steps {
+                sh 'mvn clean package'
+                sh 'cp -r target Docker-app'
+            }
+        }
+        stage('Artifact') {
+            steps {
+                echo 'This is Artifact Nexus stage'
+            }
+        }
+        stage('Image') {
+            steps {
+                sh 'docker build -t pavanreddy215/dockerweb:db Docker-db'
+                sh 'docker build -t pavanreddy215/dockerweb:app Docker-app'
+            }
+        }
+        stage('ImageScan') {
+            steps {
+                  sh 'trivy image pavanreddy215/dockerweb:db'
+                  sh 'trivy image pavanreddy215/dockerweb:app'
+            }
+        }
+        stage('PushToRegistry') {
+            steps {
+                script {
+                     withDockerRegistry(credentialsId: 'DockerHub') {
+                     sh 'docker push pavanreddy215/dockerweb:db'
+                     sh 'docker push pavanreddy215/dockerweb:app'
+                    }
+                }
+            }
+        }
+        stage('Deploy') {
+                steps {
+                     sh 'docker stack deploy -c compose.yml pkr'
+                }
+          }
+    }
+}
