@@ -5,6 +5,8 @@ services:
     image: pavanreddy215/dockerweb:db
     ports:
       - "3306:3306"
+    networks:
+      - mynetwork
 
   application:
     image: pavanreddy215/dockerweb:app
@@ -12,3 +14,9 @@ services:
       - "2222:8080"
     depends_on:
       - devopsdb
+    networks:
+      - mynetwork
+
+networks:
+  mynetwork:
+    driver: overlay
