@@ -80,7 +80,7 @@ pipeline {
         stage('Deploy') {
             steps {
                 withKubeCredentials(kubectlCredentials: [[caCertificate: '', clusterName: 'EKS-1', contextName: '', credentialsId: 'EKSCluster', namespace: 'webapps', serverUrl: 'https://8EF748174C112E718715EA76F21C8133.gr7.us-east-1.eks.amazonaws.com']]) {
-                     sh 'kubectl apply -f manifests'
+                     sh 'kubectl apply -f manifestfilesforPipeline'
                 }
             }
         }
