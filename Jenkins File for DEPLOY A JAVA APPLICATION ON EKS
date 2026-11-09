@@ -1,0 +1,88 @@
+# CI Pipeline
+pipeline {
+    agent any
+    tools {
+        maven 'mymaven'
+    }
+    stages {
+        stage('CleanWs') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('Code') {
+            steps {
+                git "https://github.com/pavanreddy215/DockerWeb-project.git"
+            }
+        }
+        stage('Build') {
+            steps {
+                sh 'mvn clean install'
+            }
+        }
+        stage('CQA') {
+            steps {
+                withSonarQubeEnv('mysonar') {
+                    sh "mvn clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:3.11.0.3922:sonar -Dsonar.projectKey=app"
+                }
+            }
+        }
+        stage('QG') {
+            steps {
+                waitForQualityGate abortPipeline: true, credentialsId: 'sonar'
+            }
+        }
+        stage('Artifact') {
+            steps {
+                script {
+                    def pom = readMavenPom file: 'pom.xml'
+                    nexusArtifactUploader artifacts: [[artifactId: "$pom.artifactId", classifier: '', file: "target/${pom.artifactId}-${pom.version}.war", type: 'war']], credentialsId: 'nexus', groupId: "$pom.groupId", nexusUrl: '13.219.249.17:8081', nexusVersion: 'nexus3', protocol: 'http', repository: 'myrepo', version: "$pom.version"
+                }
+            }
+        }
+        stage('Image') {
+            steps {
+                sh 'docker build -t pavanreddy215/k8sfirst:db Docker-db'
+                sh 'cp -r target Docker-app'
+                sh 'docker build -t pavanreddy215/k8sfirst:app Docker-app'
+            }
+        }
+        stage('ImageScan') {
+            steps {
+                sh 'trivy image pavanreddy215/k8sfirst:db'
+                sh 'trivy image pavanreddy215/k8sfirst:app'
+            }
+        }
+        stage('ImagePush') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'dockerhub') {
+                        sh 'docker push pavanreddy215/k8sfirst:db'
+                        sh 'docker push pavanreddy215/k8sfirst:app'
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+# CD Pipeline
+pipeline {
+    agent any
+
+    stages {
+        stage('ManifestFiles') {
+            steps {
+                git 'https://github.com/pavanreddy215/DockerWeb-project.git'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                withKubeCredentials(kubectlCredentials: [[caCertificate: '', clusterName: 'EKS-1', contextName: '', credentialsId: 'EKSCluster', namespace: 'webapps', serverUrl: 'https://8EF748174C112E718715EA76F21C8133.gr7.us-east-1.eks.amazonaws.com']]) {
+                     sh 'kubectl apply -f manifests'
+                }
+            }
+        }
+    }
+}
